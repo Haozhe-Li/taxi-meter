@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="zh">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>出租车计价器</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=VT323&display=swap');
+
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #121212;
+            color: #e0e0e0;
+        }
+
+        .meter {
+            background-color: #121212;
+            padding: 20px;
+            text-align: center;
+            width: calc(80% - 40px);
+        }
+
+        #price,
+        #distance,
+        #time {
+            font-size: 1.5em;
+            margin: 10px 0;
+            font-family: 'VT323', monospace;
+        }
+
+        #price {
+            font-size: 30em;
+            color: #ff4136;
+            text-shadow: 0 0 5px rgba(255, 65, 54, 0.7);
+        }
+
+        @media screen and (max-width: 768px) {
+            #price {
+                font-size: 10em;
+            }
+
+        }
+
+        button {
+            background-color: #2ecc40;
+            border: none;
+            color: white;
+            padding: 10px 20px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            margin: 4px 2px;
+            cursor: pointer;
+            border-radius: 5px;
+        }
+
+        button:disabled {
+            background-color: #555;
+            cursor: not-allowed;
+        }
+
+        .rate-input {
+            margin: 10px 0;
+        }
+
+        .rate-input label {
+            display: inline-block;
+            width: 120px;
+            text-align: right;
+            margin-right: 10px;
+        }
+
+        .rate-input input {
+            width: 50px;
+            background-color: #333;
+            color: #e0e0e0;
+            border: 1px solid #555;
+            padding: 5px;
+        }
+
+        h1 {
+            color: #e0e0e0;
+        }
+
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="meter">
+        <h1>出租车计价器</h1>
+        <div id="price">0.0</div>
+        <div id="distance">总距离: 0.00 公里</div>
+        <div id="time">总时间: 00:00:00</div>
+        <div class="rate-input">
+            <label for="startPrice">起步价</label>
+            <input type="number" id="startPrice" value="13" min="0" step="1">
+        </div>
+        <div class="rate-input">
+            <label for="distanceRate">距离倍率:</label>
+            <input type="number" id="distanceRate" value="2" min="0.1" step="0.1">
+        </div>
+        <div class="rate-input">
+            <label for="timeRate">时间倍率:</label>
+            <input type="number" id="timeRate" value="0" min="0.1" step="0.1">
+        </div>
+        <button id="startBtn">开始计价</button>
+        <button id="stopBtn" disabled>停止计价</button>
+        <button id="clearBtn" onclick="location.reload();">清除计价</button>
+    </div>
+
+    <script>
+        let startTime, startPosition, watchId, intervalId;
+        let totalDistance = 0;
+        let elapsedTime = 0;
+        const pricePerKm = 0.5;
+        const pricePerMinute = 0.5;
+
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const priceDisplay = document.getElementById('price');
+        const distanceDisplay = document.getElementById('distance');
+        const timeDisplay = document.getElementById('time');
+        const distanceRateInput = document.getElementById('distanceRate');
+        const timeRateInput = document.getElementById('timeRate');
+        const startPriceInput = document.getElementById('startPrice');
+        const meterElements = document.querySelectorAll('.meter > *:not(#price):not(#stopBtn)');
+
+        startBtn.addEventListener('click', startMeter);
+        stopBtn.addEventListener('click', stopMeter);
+
+        function startMeter() {
+            meterElements.forEach(element => {
+                element.classList.add('hidden');
+            });
+            priceDisplay.classList.remove('hidden');
+            stopBtn.disabled = false;
+            startBtn.disabled = true;
+            if ("geolocation" in navigator) {
+                startTime = new Date();
+                navigator.geolocation.getCurrentPosition(position => {
+                    startPosition = position.coords;
+                    watchId = navigator.geolocation.watchPosition(updatePosition);
+                    intervalId = setInterval(updateMeter, 1000);
+                    startBtn.disabled = true;
+                    stopBtn.disabled = false;
+                    distanceRateInput.disabled = true;
+                    timeRateInput.disabled = true;
+                }, handleError);
+            } else {
+                alert("您的浏览器不支持地理位置功能");
+            }
+        }
+
+        function stopMeter() {
+            meterElements.forEach(element => {
+                element.classList.remove('hidden');
+            });
+            stopBtn.disabled = true;
+            startBtn.disabled = false;
+            navigator.geolocation.clearWatch(watchId);
+            clearInterval(intervalId);
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+            distanceRateInput.disabled = false;
+            timeRateInput.disabled = false;
+        }
+
+        function updatePosition(position) {
+            const newPosition = position.coords;
+            totalDistance += calculateDistance(startPosition, newPosition);
+            startPosition = newPosition;
+        }
+
+        function updateMeter() {
+            if (startTime) {
+                elapsedTime = (new Date() - startTime) / 1000; // 秒
+            }
+            const distanceRate = parseFloat(distanceRateInput.value);
+            const timeRate = parseFloat(timeRateInput.value);
+            let effectiveDistance = totalDistance;
+            if (parseFloat(startPriceInput.value) > 0) {
+                effectiveDistance = Math.max(0, totalDistance - 3);
+            }
+            const price = (effectiveDistance * pricePerKm * distanceRate) + ((elapsedTime / 60) * pricePerMinute * timeRate);
+            priceDisplay.textContent = (price + parseFloat(startPriceInput.value)).toFixed(1);
+            distanceDisplay.textContent = `总距离: ${totalDistance.toFixed(2)} 公里`;
+            timeDisplay.textContent = `总时间: ${formatTime(elapsedTime)}`;
+        }
+
+        function calculateDistance(pos1, pos2) {
+            const R = 6371; // 地球半径（公里）
+            const dLat = (pos2.latitude - pos1.latitude) * Math.PI / 180;
+            const dLon = (pos2.longitude - pos1.longitude) * Math.PI / 180;
+            const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos(pos1.latitude * Math.PI / 180) * Math.cos(pos2.latitude * Math.PI / 180) *
+                Math.sin(dLon / 2) * Math.sin(dLon / 2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            return R * c; // 距离（公里）
+        }
+
+        function formatTime(seconds) {
+            const hours = Math.floor(seconds / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            const secs = Math.floor(seconds % 60);
+            return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+        }
+
+        function handleError(error) {
+            switch (error.code) {
+                case error.PERMISSION_DENIED:
+                    alert("用户拒绝了地理位置请求");
+                    break;
+                case error.POSITION_UNAVAILABLE:
+                    alert("位置信息不可用");
+                    break;
+                case error.TIMEOUT:
+                    alert("请求用户地理位置超时");
+                    break;
+                case error.UNKNOWN_ERROR:
+                    alert("发生未知错误");
+                    break;
+            }
+        }
+    </script>
+</body>
+
+</html>
